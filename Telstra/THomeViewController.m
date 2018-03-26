@@ -13,8 +13,8 @@
 #import "UIImageView+AFNetworking.h"
 #import "Masonry.h"
 #import <SDWebImage/UIImageView+WebCache.h>
-
-
+#import "Reachability.h"
+#import " TConstant.h"
 static NSString *cellIdentifier = @"factCell";
 
 @interface THomeViewController () {
@@ -26,7 +26,8 @@ static NSString *cellIdentifier = @"factCell";
     TFactModel *fact;
 }
 @property (nonatomic, strong) NSMutableArray *fetchedImages;
-
+@property (nonatomic) Reachability *hostReachability;
+@property (nonatomic) Reachability *internetReachability;
 @end
 
 @implementation THomeViewController
@@ -41,8 +42,13 @@ static NSString *cellIdentifier = @"factCell";
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.navigationController.navigationBar.translucent = NO;
-    // init table view
-    [self loadHomeScreenData]; // Load home screen data through service all.
+  
+   
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reachabilityChanged:) name:kReachabilityChangedNotification object:nil];
+       // init table view
+    // Load home screen data through service all.
+    [self loadHomeScreenData];
     homeTableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
     // must set delegate & dataSource, otherwise the the table will be empty and not responsive
     homeTableView.delegate = self;
@@ -92,9 +98,25 @@ static NSString *cellIdentifier = @"factCell";
 #pragma mark - Home screen service call Methods
 
 - (void)loadHomeScreenData {
-    //Bring activity indicator to from of Tableview
+    NetworkStatus myStatus = [[Reachability reachabilityWithHostName:K_TSERVICE_BASE_URL]currentReachabilityStatus];
+    switch (myStatus) {
+        case NotReachable:
+            [self notReachableSetUp];
+            break;
+        case ReachableViaWWAN:
+            [self setUpData];
+            break;
+        case ReachableViaWiFi:
+            [self setUpData];
+            break;
+        default:
+            break;
+    }
+}
+-(void)setUpData
+{
     [homeTableView bringSubviewToFront:activityIndicator];
-    [factRequestResponse getFactsDataWithCompletionHandler:^(NSError *error) {
+        [factRequestResponse getFactsDataWithCompletionHandler:^(NSError *error) {
         //Dispatch to main queue
         dispatch_async(dispatch_get_main_queue(), ^(void){
             if(!error) {
@@ -108,8 +130,6 @@ static NSString *cellIdentifier = @"factCell";
         });
     }];
 }
-
-
 #pragma mark - UITableViewDataSource
 // number of section(s), now I assume there is only 1 section
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)theTableView
@@ -186,5 +206,43 @@ static NSString *cellIdentifier = @"factCell";
 
 - (void)tableView:(UITableView *)theTableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
 {
+}
+
+-(void)showAlertWithTitle:(NSString*)title andMessage:(NSString*)message
+{
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
+      UIAlertAction *cancel = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil];
+    [alert addAction:cancel];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+#pragma mark - Reachability Notification and Related Methods
+
+- (void) reachabilityChanged:(NSNotification *)note
+{
+    NetworkStatus myStatus = [[Reachability reachabilityWithHostName:K_TSERVICE_BASE_URL]currentReachabilityStatus];
+    switch (myStatus) {
+        case NotReachable:
+            [self notReachableSetUp];
+            break;
+        case ReachableViaWWAN:
+            break;
+        case ReachableViaWiFi:
+            break;
+        default:
+            break;
+    }
+}
+
+-(void)notReachableSetUp
+{
+    if (refreshControl.isRefreshing) {
+        [refreshControl endRefreshing];
+    }
+    [activityIndicator stopAnimating];
+    activityIndicator.hidden = YES;
+    [homeTableView reloadData];
+    [homeTableView scrollsToTop];
+    [self showAlertWithTitle:@"Error!" andMessage:@"No Network Connection"];
 }
 @end
